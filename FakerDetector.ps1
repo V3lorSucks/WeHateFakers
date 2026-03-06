@@ -1,9 +1,12 @@
 <#
 
 DESCRIPTION
-    Analyzes WiFi connections, hotspot usage, and network activity to detect common hotspots and specifically aimed at catching Fakers
-
-    I HATE FAKERS SO BAD
+    Hybrid VM and Hotspot Detection Script - Combines VMAware techniques with FakerDetector
+    Analyzes WiFi connections, hotspot usage, network activity, AND virtual machine indicators
+    
+    Based on VMAware (https://github.com/kernelwernel/VMAware) by kernelwernel
+    Original FakerDetector by @praiselily [Lily] and @valor4.0 [DrValor]
+    Hybrid version integrates both for comprehensive environment detection
 
 #>
 
@@ -19,26 +22,268 @@ if (-not (Test-Path (Split-Path $OutputPath))) {
 
 
 Write-Host @"
-                                                 
- _    _       _          ___     _               
-|_|  | |_ ___| |_ ___   |  _|___| |_ ___ ___ ___ 
-| |  |   | .'|  _| -_|  |  _| .'| '_| -_|  _|_ -|
-|_|  |_|_|__,|_| |___|  |_| |__,|_,_|___|_| |___|
-                                                 
+                                                  
+ _    _       _          ___     _                
+|_|  | |_ ___| |_ ___   |  _|___| |_ ___ ___ ___  
+| |  |   | .'|  _| -_|  |  _| .'| '_| -_|  _|_ -| 
+|_|  |_|_|__,|_| |___|  |_| |__,|_,_|___|_| |___| 
+                                                  
+  _____ __  __  ____    __  __ _   _ _   
+ |  ___|  \/  |/ ___|  |  \/  | \ | (_)_ __ ___  
+ | |_  | |\/| | |  _   | |\/| |  \| | | '_ ` _ \ 
+ |  _| | |  | | |_| |  | |  | | |\  | | | | | | |
+ |_|   |_|  |_|\____|  |_|  |_|_| \_|_|_| |_| |_|
+                                                  
 "@ -ForegroundColor Cyan                                                                                        
 
-Write-Host "Searching for Fakers!" -ForegroundColor Green
+Write-Host "Comprehensive Environment Detection (VM + Hotspot)" -ForegroundColor Green
+Write-Host "Integrating VMAware techniques with FakerDetector" -ForegroundColor Cyan
 
 $startTime = (Get-Date).AddHours(-$HoursBack)
 $suspiciousActivities = @()
 $fakerDetected = $false
 $fakerIndicators = @()
+$vmDetected = $false
+$vmScore = 0
+$vmIndicators = @()
+$vmBrand = "Unknown"
 
 Write-Host ""
-Write-Host "Hotspot Detections for Fakers" -ForegroundColor Cyan
+Write-Host "Detection Systems Active:" -ForegroundColor Cyan
+Write-Host "  - VMAware VM Detection Techniques (Windows)" -ForegroundColor Green
+Write-Host "  - FakerDetector Hotspot Analysis" -ForegroundColor Green
 Write-Host "Made with love by lily<3" -ForegroundColor Cyan
 Write-Host ""
+
+# ============================================================================
+# SECTION 1: VMAWARE-BASED VM DETECTION TECHNIQUES
+# ============================================================================
+
+Write-Host "[VMAware] Running VM detection techniques..." -ForegroundColor Yellow
+
+# Technique 1: Virtual Processors Check
+try {
+    $processorCount = (Get-WmiObject Win32_Processor).NumberOfLogicalProcessors
+    if ($processorCount -gt 16) {
+        $vmScore += 15
+        $vmIndicators += "High logical processor count: $processorCount (common in VMs)"
+    }
+} catch {}
+
+# Technique 2: BIOS/SMBIOS Check
+try {
+    $biosInfo = Get-WmiObject Win32_BIOS
+    $biosManufacturer = $biosInfo.Manufacturer
+    $biosSerialNumber = $biosInfo.SerialNumber
+    
+    $vmBiosPatterns = @(
+        'VMware', 'VirtualBox', 'QEMU', 'KVM', 'Xen', 
+        'Microsoft Hyper-V', 'Parallels', 'Bochs', 'InnoTek'
+    )
+    
+    foreach ($pattern in $vmBiosPatterns) {
+        if ($biosManufacturer -like "*$pattern*") {
+            $vmScore += 40
+            $vmIndicators += "BIOS manufacturer contains VM pattern: $pattern"
+            $vmBrand = $pattern
+            break
+        }
+    }
+    
+    if ([string]::IsNullOrWhiteSpace($biosSerialNumber) -or $biosSerialNumber -eq "None" -or $biosSerialNumber -eq "0") {
+        $vmScore += 20
+        $vmIndicators += "Invalid or empty BIOS serial number detected"
+    }
+} catch {}
+
+# Technique 3: Computer System Manufacturer
+try {
+    $computerSystem = Get-WmiObject Win32_ComputerSystem
+    $manufacturer = $computerSystem.Manufacturer
+    $model = $computerSystem.Model
+    
+    $vmManufacturerPatterns = @(
+        @{Pattern='VMware'; Brand='VMware'},
+        @{Pattern='VirtualBox'; Brand='VirtualBox'},
+        @{Pattern='QEMU'; Brand='QEMU'},
+        @{Pattern='KVM'; Brand='KVM'},
+        @{Pattern='Xen'; Brand='Xen'},
+        @{Pattern='Bochs'; Brand='Bochs'},
+        @{Pattern='Parallels'; Brand='Parallels'}
+    )
+    
+    foreach ($vmPattern in $vmManufacturerPatterns) {
+        if ($manufacturer -like "*$($vmPattern.Pattern)*") {
+            $vmScore += 50
+            $vmIndicators += "System manufacturer indicates VM: $($vmPattern.Pattern)"
+            $vmBrand = $vmPattern.Brand
+            break
+        }
+    }
+} catch {}
+
+# Technique 4: Disk Serial Number Check
+try {
+    $disks = Get-WmiObject Win32_DiskDrive
+    foreach ($disk in $disks) {
+        $serialNumber = $disk.SerialNumber.Trim()
+        if ([string]::IsNullOrWhiteSpace($serialNumber)) {
+            $vmScore += 15
+            $vmIndicators += "Disk missing serial number"
+        }
+        
+        # Check for VM-specific disk patterns
+        if ($disk.Model -match "VBOX|VMware|QEMU|VIRTUAL") {
+            $vmScore += 30
+            $vmIndicators += "Disk model indicates VM: $($disk.Model)"
+            if ($vmBrand -eq "Unknown") {
+                if ($disk.Model -match "VBOX") { $vmBrand = "VirtualBox" }
+                elseif ($disk.Model -match "VMware") { $vmBrand = "VMware" }
+                elseif ($disk.Model -match "QEMU") { $vmBrand = "QEMU" }
+            }
+        }
+    }
+} catch {}
+
+# Technique 5: Network Adapter MAC Address OUI Check
+try {
+    $adapters = Get-WmiObject Win32_NetworkAdapterConfiguration | Where-Object { $_.MACAddress -ne $null }
+    
+    $vmMacPrefixes = @{
+        "000C29" = "VMware"
+        "005056" = "VMware"
+        "080027" = "VirtualBox"
+        "00155D" = "Hyper-V"
+        "001DD8" = "Hyper-V"
+        "001517" = "Xen"
+        "00163E" = "Xen"
+        "525400" = "QEMU/KVM"
+        "ACDE48" = "Private"
+    }
+    
+    foreach ($adapter in $adapters) {
+        $macPrefix = $adapter.MACAddress.Replace("-", "").Substring(0, 6).ToUpper()
+        if ($vmMacPrefixes.ContainsKey($macPrefix)) {
+            $vmScore += 35
+            $vmIndicators += "MAC address OUI indicates $($vmMacPrefixes[$macPrefix]) VM"
+            if ($vmBrand -eq "Unknown") {
+                $vmBrand = $vmMacPrefixes[$macPrefix]
+            }
+        }
+    }
+} catch {}
+
+# Technique 6: Video Controller Check
+try {
+    $videoControllers = Get-WmiObject Win32_VideoController
+    foreach ($controller in $videoControllers) {
+        $name = $controller.Name
+        if ($name -match "VMware|VirtualBox|QEMU|Standard VGA|Basic Render Driver") {
+            $vmScore += 25
+            $vmIndicators += "Video controller indicates VM: $name"
+            if ($vmBrand -eq "Unknown") {
+                if ($name -match "VMware") { $vmBrand = "VMware" }
+                elseif ($name -match "VirtualBox") { $vmBrand = "VirtualBox" }
+                elseif ($name -match "QEMU") { $vmBrand = "QEMU" }
+            }
+        }
+    }
+} catch {}
+
+# Technique 7: Running Processes Check (VM tools)
+try {
+    $vmProcesses = @(
+        "vmtoolsd", "vmwaretray", "vmwareuser", "vboxservice", 
+        "vboxtray", "qemu-ga", "spice-webdavd", "vdagent"
+    )
+    
+    $runningProcesses = Get-Process | Select-Object -ExpandProperty ProcessName
+    foreach ($vmProcess in $vmProcesses) {
+        if ($runningProcesses -contains $vmProcess) {
+            $vmScore += 30
+            $vmIndicators += "VM guest tools process running: $vmProcess"
+        }
+    }
+} catch {}
+
+# Technique 8: Registry Keys Check
+try {
+    $vmRegistryKeys = @(
+        "HKLM:\HARDWARE\DESCRIPTION\System\BIOS",
+        "HKLM:\SOFTWARE\Oracle\VirtualBox Guest Additions",
+        "HKLM:\SOFTWARE\VMware, Inc.\VMware Tools",
+        "HKLM:\SYSTEM\CurrentControlSet\Services\vmmouse",
+        "HKLM:\SYSTEM\CurrentControlSet\Services\vmhgfs",
+        "HKLM:\SYSTEM\CurrentControlSet\Services\VBoxService",
+        "HKLM:\SYSTEM\CurrentControlSet\Services\VBoxMouse"
+    )
+    
+    foreach ($key in $vmRegistryKeys) {
+        if (Test-Path $key) {
+            $vmScore += 25
+            $vmIndicators += "VM-related registry key found: $key"
+        }
+    }
+} catch {}
+
+# Technique 9: WMI Service Check
+try {
+    $services = Get-WmiObject Win32_Service | Where-Object { $_.State -eq "Running" }
+    $vmServices = @("vmtools", "VBoxService", "qemu-guest-agent", "spice-vdagent")
+    
+    foreach ($service in $services) {
+        foreach ($vmService in $vmServices) {
+            if ($service.Name -like "*$vmService*" -or $service.DisplayName -like "*$vmService*") {
+                $vmScore += 20
+                $vmIndicators += "VM service running: $($service.Name)"
+            }
+        }
+    }
+} catch {}
+
+# Technique 10: Physical Memory Check
+try {
+    $memory = Get-WmiObject Win32_PhysicalMemory
+    $totalSlots = $memory.Count
+    $totalCapacity = ($memory | Measure-Object -Property Capacity -Sum).Sum / 1GB
+    
+    if ($totalSlots -eq 0 -or $totalCapacity -eq 0) {
+        $vmScore += 20
+        $vmIndicators += "Physical memory information unavailable or invalid"
+    }
+    
+    # Common VM memory sizes (powers of 2)
+    if ($totalCapacity -in @(1, 2, 4, 8, 16, 32, 64, 128, 256, 512)) {
+        $vmScore += 5
+        $vmIndicators += "Memory size is a common VM allocation: ${totalCapacity}GB"
+    }
+} catch {}
+
+# Determine if VM based on score
+if ($vmScore -ge 50) {
+    $vmDetected = $true
+}
+
+if ($vmDetected) {
+    Write-Host "  [!] VM DETECTED!" -ForegroundColor Red
+    Write-Host "  Brand: $vmBrand" -ForegroundColor Red
+    Write-Host "  Score: $vmScore/100" -ForegroundColor Red
+    Write-Host "  Indicators:" -ForegroundColor Red
+    foreach ($indicator in $vmIndicators) {
+        Write-Host "    - $indicator" -ForegroundColor Yellow
+    }
+    $suspiciousActivities += "Virtual Machine detected ($vmBrand) with score $vmScore/100"
+} else {
+    Write-Host "  [+] No VM detected (Score: $vmScore/100)" -ForegroundColor Green
+}
+
 Write-Host ""
+
+# ============================================================================
+# SECTION 2: FAKERDETECTOR HOTSPOT ANALYSIS
+# ============================================================================
+
+Write-Host "[FakerDetector] Analyzing network and hotspot activity..." -ForegroundColor Yellow
 
 $wlanEvents = @()
 try {
@@ -238,7 +483,7 @@ try {
             Write-Host "    Channel: $channel | Signal: $signal" -ForegroundColor Gray
             
             if ($isHotspot -and -not $PossibleVariables) {
-                Write-Host "`n  ⚠️  WARNING: Connected to a HOTSPOT!" -ForegroundColor Red
+                Write-Host "`n  ⚠️  WARNING: Connected to HOTSPOT!" -ForegroundColor Red
                 Write-Host "  Hotspot Indicators Detected:" -ForegroundColor Red
                 foreach ($indicator in $hotspotIndicators) {
                     Write-Host "    - $indicator" -ForegroundColor Yellow
@@ -356,7 +601,8 @@ try {
     # Silently continue
 }
 
-Write-Host "[8/8] Generating HTML Report..." -ForegroundColor Yellow
+Write-Host ""
+Write-Host "[Report] Generating comprehensive HTML Report..." -ForegroundColor Yellow
 
 $htmlReport = @"
 <!DOCTYPE html>
@@ -364,7 +610,7 @@ $htmlReport = @"
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>WiFi Analysis Report - Faker Detection</title>
+    <title>Hybrid Detection Report - VM & Hotspot Analysis</title>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
     <style>
         :root {
@@ -393,14 +639,14 @@ $htmlReport = @"
         body {
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
             background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
-            margin: 0;
+            margin: 20px;
             padding: 20px;
             min-height: 100vh;
             color: var(--dark-text);
         }
         
         .container {
-            max-width: 1200px;
+            max-width: 1400px;
             margin: 0 auto;
         }
         
@@ -462,6 +708,7 @@ $htmlReport = @"
         .card.warning { background: linear-gradient(135deg, var(--warning-color) 0%, #c0392b 100%); color: white; }
         .card.success { background: linear-gradient(135deg, var(--success-color) 0%, #219653 100%); color: white; }
         .card.info { background: linear-gradient(135deg, var(--secondary-color) 0%, #1976d2 100%); color: white; }
+        .card.danger { background: linear-gradient(135deg, #8e44ad 0%, #6c3483 100%); color: white; }
         
         .card i {
             font-size: 2rem;
@@ -518,6 +765,7 @@ $htmlReport = @"
         
         .alert.warning { background: linear-gradient(135deg, #ffdede 0%, #ffebee 100%); border-left: 5px solid var(--warning-color); }
         .alert.success { background: linear-gradient(135deg, #e8f5e9 0%, #eafaf1 100%); border-left: 5px solid var(--success-color); }
+        .alert.danger { background: linear-gradient(135deg, #fadbd8 0%, #f5b7b1 100%); border-left: 5px solid #8e44ad; }
         
         .alert ul {
             margin-top: 10px;
@@ -569,6 +817,11 @@ $htmlReport = @"
         
         .hotspot-row {
             background: linear-gradient(135deg, #fff3cd 0%, #fff8e1 100%) !important;
+            font-weight: bold;
+        }
+        
+        .vm-row {
+            background: linear-gradient(135deg, #fadbd8 0%, #f5b7b1 100%) !important;
             font-weight: bold;
         }
         
@@ -636,14 +889,33 @@ $htmlReport = @"
 <body>
     <div class="container">
         <header class="header">
-            <h1><i class="fas fa-wifi"></i> WiFi Analysis Report - Faker Detection</h1>
+            <h1><i class="fas fa-shield-alt"></i> Hybrid Detection Report</h1>
+            <p>VM Analysis (VMAware) + Hotspot Detection (FakerDetector)</p>
             <p>Generated: $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')</p>
-            <div class="credits">Designed by @praiselily [Lily] and @valor4.0 [DrValor]</div>
+            <div class="credits">
+                VMAware by kernelwernel | FakerDetector by @praiselily [Lily]<br>
+                Hybrid integration, VM detection techniques, and all modifications by @valor4.0 [DrValor]
+            </div>
         </header>
 "@
 
 # Summary Cards
 $htmlReport += "<div class='summary-cards'>
+    <div class='card $(if ($vmDetected) { 'danger' } else { 'success' })'>
+        <i class='fas fa-desktop'></i>
+        <h3>VM Detection</h3>
+        <p>$(if ($vmDetected) { 'DETECTED' } else { 'NOT DETECTED' })</p>
+    </div>
+    <div class='card info'>
+        <i class='fas fa-tag'></i>
+        <h3>VM Brand</h3>
+        <p>$vmBrand</p>
+    </div>
+    <div class='card info'>
+        <i class='fas fa-chart-bar'></i>
+        <h3>VM Score</h3>
+        <p>$vmScore/100</p>
+    </div>
     <div class='card warning'>
         <i class='fas fa-exclamation-triangle'></i>
         <h3>Suspicious Activities</h3>
@@ -669,16 +941,29 @@ $htmlReport += "<div class='summary-cards'>
         <h3>Virtual Adapters</h3>
         <p>$($virtualAdapters.Count)</p>
     </div>
-    <div class='card info'>
-        <i class='fas fa-laptop'></i>
-        <h3>Connected Devices</h3>
-        <p>$($connectedDevices.Count)</p>
-    </div>
 </div>"
+
+# VM Detection Section
+$htmlReport += "<div class='section'>
+    <h2><i class='fas fa-desktop'></i> Virtual Machine Detection (VMAware Techniques)</h2>"
+
+if ($vmDetected) {
+    $htmlReport += "<div class='alert danger'><strong>⚠️ VIRTUAL MACHINE DETECTED!</strong><br>"
+    $htmlReport += "<strong>Brand:</strong> $vmBrand<br>"
+    $htmlReport += "<strong>Score:</strong> $vmScore/100<br><br>"
+    $htmlReport += "<strong>VM Indicators:</strong><ul>"
+    foreach ($indicator in $vmIndicators) {
+        $htmlReport += "<li><i class='fas fa-exclamation-triangle'></i> $indicator</li>"
+    }
+    $htmlReport += "</ul></div>"
+} else {
+    $htmlReport += "<div class='alert success'><i class='fas fa-check-circle'></i> No virtual machine detected (Score: $vmScore/100)</div>"
+}
+$htmlReport += "</div>"
 
 # Suspicious Activities Section
 $htmlReport += "<div class='section'>
-    <h2><i class='fas fa-shield-alt'></i> Security Analysis</h2>"
+    <h2><i class='fas fa-shield-alt'></i> Security Analysis (FakerDetector)</h2>"
 
 if ($suspiciousActivities.Count -gt 0) {
     $htmlReport += "<div class='alert warning'><strong>⚠️ ALERT: $($suspiciousActivities.Count) suspicious activity(ies) detected!</strong><ul>"
@@ -820,7 +1105,7 @@ $htmlReport += @"
         // Animate counters
         function animateCounter(element, start, end, duration) {
             let startTimestamp = null;
-            const easing = t => t < 0.5 ? 4 * t * t * t : (t - 1) * (2 * t - 2) * (2 * t - 2) + 1; // Custom easeInOutCubic
+            const easing = t => t < 0.5 ? 4 * t * t * t : (t - 1) * (2 * t - 2) * (2 * t - 2) + 1;
             const step = (timestamp) => {
                 if (!startTimestamp) startTimestamp = timestamp;
                 const progress = Math.min((timestamp - startTimestamp) / duration, 1);
@@ -852,8 +1137,10 @@ $htmlReport += @"
         });
     </script>
 <div class='footer'>
-    <p>Report generated by FakerDetector</p>
-    <p>Designed by @praiselily [Lily] and @valor4.0 [DrValor]</p>
+    <p>Hybrid Detection Report - FakerDetector + VMAware Integration</p>
+    <p>VMAware: https://github.com/kernelwernel/VMAware (MIT License)</p>
+    <p>FakerDetector: Created by @praiselily [Lily]</p>
+    <p>Hybrid Integration & VM Detection Techniques by @valor4.0 [DrValor]</p>
     <p>Contact: DM @praiselily on Discord if anything breaks</p>
 </div>
 </div>
@@ -869,13 +1156,23 @@ try {
 }
 
 Write-Host ""
-Write-Host "SUMMARY:" -ForegroundColor Cyan
+Write-Host "FINAL SUMMARY:" -ForegroundColor Cyan
+Write-Host "  VM Detection: $(if ($vmDetected) { 'DETECTED' } else { 'NOT DETECTED' })" -ForegroundColor $(if ($vmDetected) { "Red" } else { "Green" })
+Write-Host "  VM Brand: $vmBrand" -ForegroundColor Cyan
+Write-Host "  VM Score: $vmScore/100" -ForegroundColor $(if ($vmScore -ge 50) { "Red" } else { "Green" })
 Write-Host "  Suspicious Activities: $($suspiciousActivities.Count)" -ForegroundColor $(if ($suspiciousActivities.Count -gt 0) { "Red" } else { "Green" })
 Write-Host "  Hotspot Profiles: $(($networkProfiles | Where-Object { $_.IsHotspot }).Count)" -ForegroundColor $(if (($networkProfiles | Where-Object { $_.IsHotspot }).Count -gt 0) { "Yellow" } else { "Green" })
 Write-Host "  Hosted Network: $(if ($hostedNetworkActive) { 'ACTIVE' } else { 'Inactive' })" -ForegroundColor $(if ($hostedNetworkActive) { "Red" } else { "Green" })
 Write-Host "  Mobile Hotspot: $(if ($mobileHotspotActive) { 'RUNNING' } else { 'Stopped' })" -ForegroundColor $(if ($mobileHotspotActive) { "Red" } else { "Green" })
 Write-Host "  Virtual Adapters: $($virtualAdapters.Count)" -ForegroundColor $(if ($virtualAdapters.Count -gt 0) { "Yellow" } else { "Green" })
 Write-Host "  Connected Devices: $($connectedDevices.Count)" -ForegroundColor Cyan
+
+if ($vmDetected) {
+    Write-Host "`nVM INDICATORS:" -ForegroundColor Red
+    foreach ($indicator in $vmIndicators) {
+        Write-Host "  - $indicator" -ForegroundColor Yellow
+    }
+}
 
 if ($suspiciousActivities.Count -gt 0) {
     Write-Host "`nWARNINGS:" -ForegroundColor Red
@@ -894,7 +1191,8 @@ try {
 }
 
 Write-Host ""
-Write-Host "Hit up @praiselily / @valor4.0 on Discord if you run into any issues" -ForegroundColor Cyan
+Write-Host "Hybrid Detection Complete!" -ForegroundColor Green
+Write-Host "Based on VMAware by kernelwernel and FakerDetector by @praiselily & @valor4.0" -ForegroundColor Cyan
 Write-Host ""
 Write-Host "Script complete. Press any key to exit..." -ForegroundColor Green
 $null = $Host.UI.RawUI.ReadKey("NoEcho,IncludeKeyDown")
